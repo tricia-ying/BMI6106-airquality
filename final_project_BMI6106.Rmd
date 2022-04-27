@@ -1,0 +1,179 @@
+---
+title: "Final Project"
+author: Jessica Jung(u0930750) and Tricia Macauley (u0993271)
+output: html_notebook
+---
+```{r open data}
+# load data
+setwd("/Users/tricialuo/BMI-spring-2022/bmi6106/Project/") 
+utah = read.csv("utah_air.csv")
+utah$Date <- lubridate::mdy(utah$Date) # change date from chr to date
+```
+
+```{r new dataframe with average of each variables per day}
+library (dplyr)
+#daily mean of PM2.5 concentration
+utah_PM2.5_daily_mean = utah %>% group_by(Date) %>% summarise(Daily.Mean.PM2.5.Concentration = mean(Daily.Mean.PM2.5.Concentration))
+
+#daily mean of AQI value 
+utah_AQI_daily_mean = utah %>% group_by(Date) %>% summarise(DAILY_AQI_VALUE = mean(DAILY_AQI_VALUE))
+
+utah_daily_mean <- left_join(utah_AQI_daily_mean, utah_PM2.5_daily_mean, 
+              by = c("Date" = "Date"))
+```
+
+```{r compare ranges per location and month}
+#county yearly mean
+location_PM2.5 = utah %>% group_by(COUNTY) %>% summarise(Daily.Mean.PM2.5.Concentration = mean(Daily.Mean.PM2.5.Concentration))
+
+location_AQI = utah %>% group_by(COUNTY) %>% summarise(DAILY_AQI_VALUE = mean(DAILY_AQI_VALUE))
+
+
+library(dplyr)
+monthly_AQI<- utah %>%
+mutate(month = format(Date, "%m")) %>%
+group_by(month) %>%
+summarise(DAILY_AQI_VALUE = mean(DAILY_AQI_VALUE))
+
+monthly_PM2.5<- utah %>%
+mutate(month = format(Date, "%m")) %>%
+group_by(month) %>%
+summarise(Daily.Mean.PM2.5.Concentration = mean(Daily.Mean.PM2.5.Concentration))
+```
+
+```{r}
+describe(utah)
+
+```
+
+```{r group by location to plot on map}
+library (dplyr)
+#daily mean of PM2.5 concentration
+utah_counties_PM_2.5 = utah %>% group_by(COUNTY, SITE_LATITUDE, SITE_LONGITUDE) %>% summarise(Daily.Mean.PM2.5.Concentration = mean(Daily.Mean.PM2.5.Concentration))
+
+#daily mean of AQI value 
+utah_counties_AQI = utah %>% group_by(COUNTY, SITE_LATITUDE, SITE_LONGITUDE) %>% summarise(DAILY_AQI_VALUE = mean(DAILY_AQI_VALUE))
+
+```
+
+```{r}
+plot(factor(utah_counties_AQI$COUNTY), utah_counties_AQI$DAILY_AQI_VALUE)
+plot(factor(utah_counties_PM_2.5$COUNTY),utah_counties_PM_2.5$Daily.Mean.PM2.5.Concentration)
+
+```
+```{r correlation matrix heat-map}
+datacor <- utah[,c(4,5,7,17,19,20)]
+cormat <- round(cor(datacor),2)
+head(cormat)
+
+library(reshape2)
+melted_cormat <- melt(cormat)
+head(melted_cormat)
+
+library(ggplot2)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+```
+
+```{r geopatial plot}  
+#install.packages("ggmap")
+library(ggmap)
+ggmap::register_google(key = "AIzaSyCQOcCemUhGo3VxSEXVsV3pDL97Oj6Mhr8")
+get_googlemap = get_map(location = 'utah', zoom = 7, maptype = 'roadmap', source = 'google', crop = T)
+
+# AQI values over counties
+ggmap(get_googlemap) +
+  geom_point(data = utah_counties_AQI, aes(x = SITE_LONGITUDE, y = SITE_LATITUDE, color = DAILY_AQI_VALUE)) + scale_colour_gradient(low='blue',high='red') 
+#dev.copy(png,'AQI_County.png')
+#dev.off()
+
+# PM 2.5 concentration over counties 
+
+ggmap(get_googlemap) +
+  geom_point(data = utah_counties_PM_2.5, aes(x = SITE_LONGITUDE, y = SITE_LATITUDE, color = Daily.Mean.PM2.5.Concentration)) + scale_colour_gradient(low='orange',high='blue')
+#dev.copy(png,'PM2.5_County.png')
+#dev.off()
+```
+```{r geospatial variance in means}
+var(utah_counties_AQI$DAILY_AQI_VALUE)
+var(utah_counties_PM_2.5$Daily.Mean.PM2.5.Concentration)
+
+utah_counties_AQI
+```
+
+
+```{r Time series plot}
+class(utah_daily_mean$Date) # Date is currently formed as character, we need to change to class = Date to make the graph look pretty
+
+# make date column as class = Date
+utah_daily_mean$Date <- as.Date(utah_daily_mean$Date,
+                        format = "%m/%d/%y")
+
+# Time series plot
+library("reshape2")
+data_long <- melt(utah_daily_mean, id.vars = "Date")
+library("ggplot2")
+ggplot(data_long,                            # Draw ggplot2 time series plot
+       aes(x = Date,
+           y = value,
+           group = 1,
+           col = variable,)) +
+  geom_line()
+```
+
+
+```{r monthly time series plot}
+monthly_values <- left_join(monthly_AQI, monthly_PM2.5, 
+              by = c("month" = "month"))
+
+data_long2 <- melt(monthly_values, id.vars = "month")
+data_long2
+library("ggplot2")
+ggplot(data_long2,                            # Draw ggplot2 time series plot
+       aes(x = month,
+           y = value,
+           group = 1,
+           col = variable,)) +
+  geom_bar(stat='identity')
+```
+
+```{r longitudinal variance in means}
+var(monthly_AQI$DAILY_AQI_VALUE)
+var(monthly_PM2.5$Daily.Mean.PM2.5.Concentration)
+```
+
+```{r repeated measures ANOVA for county}
+
+library(psych)
+describe(utah)
+aov.1 <- aov(DAILY_AQI_VALUE ~ COUNTY,data=utah_counties_AQI)  
+summary(aov.1)
+
+aov.2 <- aov(Daily.Mean.PM2.5.Concentration ~ COUNTY,data=utah_counties_PM_2.5)  
+summary(aov.2)
+```
+
+```{r repeated measures ANOVA for months}
+
+library(dplyr)
+monthly_AQI2<- utah_AQI_daily_mean %>%
+mutate(Date = format(Date, "%m")) 
+
+
+monthly_PM2.52<- utah_PM2.5_daily_mean %>%
+mutate(Date = format(Date, "%m")) 
+
+library(psych)
+describe(utah)
+aov.3 <- aov(DAILY_AQI_VALUE ~ Date,data=monthly_AQI2)  
+summary(aov.3)
+
+aov.4 <- aov(Daily.Mean.PM2.5.Concentration ~ Date,data=monthly_PM2.52)  
+summary(aov.4)
+```
+
+
+
+
+
+
